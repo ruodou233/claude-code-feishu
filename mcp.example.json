@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "lark-channel": {
+      "command": "node",
+      "args": [
+        "$HOME/.claude/channels/lark/server.mjs"
+      ]
+    }
+  }
+}

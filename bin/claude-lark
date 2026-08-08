@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# 在一个真正的 Terminal.app 窗口里起一个挂着飞书 channel 的 Claude Code 会话。
+#
+# 为什么用 Terminal.app 而不是后台进程/screen/tmux：
+#   这个会话要能被反复往返——电脑上看得见能直接敲，出门用飞书推进，回来还是它。
+#   后台伪终端看不见；macOS 自带 screen 4.00.03 撑不住现代 TUI（实测窗口渲染为空）；
+#   tmux 要先装 brew。Terminal.app 是零依赖且天然可见的那个。
+set -uo pipefail
+
+WORKDIR="${1:-$HOME/Documents/AgentOps}"
+MCP="$HOME/.claude/channels/lark/mcp.json"
+CLAUDE="$HOME/.local/bin/claude"
+
+[ -d "$WORKDIR" ] || { echo "目录不存在: $WORKDIR"; exit 1; }
+
+# 同一时间只允许一个远程会话：多个会话会各起一个 consumer 消费同一条飞书事件流，
+# 同一条指令被执行多次（已实测踩到两次）。这里只提示，不自动杀——正在干活的会话
+# 被静默杀掉比重复执行更难挽回。
+# 允许多个远程会话并存：每个会话有独立的飞书话题，server 按 root_id 只认自己那个，
+# 所以不会再出现"一条指令被多个会话重复执行"。实例 id 是 server 与 hook 认亲的凭据。
+INSTANCE="lark-$(date +%s)-$$"
+
+SETTINGS="$HOME/.claude/channels/lark/settings.json"
+# --settings 只对本会话生效：Stop hook（把每轮回复同步到手机）不会污染其它会话
+CMD="cd $(printf %q "$WORKDIR") && export LARK_SYNC_FULL=1 && export LARK_INSTANCE=$(printf %q "$INSTANCE") && exec $(printf %q "$CLAUDE") --permission-mode bypassPermissions --settings $(printf %q "$SETTINGS") --mcp-config $(printf %q "$MCP") --dangerously-load-development-channels server:lark-channel"
+
+osascript >/dev/null 2>&1 <<OSA
+tell application "Terminal"
+  activate
+  do script "$CMD"
+end tell
+OSA
+
+echo "已在 Terminal 新窗口启动，工作目录 $WORKDIR"
+echo "窗口里会先弹一次「加载开发版 channel」确认框——按回车选第一项即可。"
+echo "之后：手机飞书私聊推进同一会话；回来切回这个窗口继续。"

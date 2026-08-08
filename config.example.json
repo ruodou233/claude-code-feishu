@@ -1,0 +1,8 @@
+{
+  "chatId": "oc_REPLACE_WITH_YOUR_DM_CHAT_ID",
+  "boardChatId": "oc_REPLACE_WITH_YOUR_TOPIC_GROUP_ID",
+  "allowedSenders": [
+    "ou_REPLACE_WITH_YOUR_OPEN_ID"
+  ],
+  "autoApprove": false
+}
