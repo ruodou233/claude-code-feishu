@@ -135,15 +135,45 @@ claude-lark ~/your/project
 - server 只服务 `config.chatId` 一个私聊来源。放开多来源会让"最近一条入站消息的来源"
   在消息交错时把 A 的回复发到 B——私聊内容可能落到群里。
 
-## 已知限制
+## 可选：开机自启
 
-- 话题里必须 `@bot`（飞书事件权限所致），私聊不用。
-- 没有开机自启：会话在 Terminal 窗口里，重启后需手动起。这是换取"看得见"的代价。
-- 自建 channel 需 `--dangerously-load-development-channels`，每次启动过一次警告框
-  （研究预览期限制，非本项目可控）。
-- 只做了 Claude Code。Codex CLI 没有等价的 channel 机制。
-- `bin/claude-to-desktop` 用模拟按键执行 `/desktop` 把会话搬进 Claude 桌面版
-  （直接往桌面版元数据目录写文件无效，它只认自己写的索引）。靠模拟按键，TUI 改版即失效。
+默认不自启——`claude-lark` 把会话开在 Terminal 窗口里，是为了"回来能直接接着敲"。
+如果你更需要"随时能用"而不在乎看不看得见，可以让它开机自动跑。
+
+关键点：Claude Code 是 TUI，需要真 TTY，直接 `nohup` 起不来，得用 `script(1)` 造伪终端：
+
+```bash
+# ~/Library/LaunchAgents/com.you.claude-code-feishu.plist 的 ProgramArguments
+/bin/bash -c "cd ~/your/project && (sleep 15; printf '\n'; sleep 100000) | \
+  script -q /dev/null ~/.local/bin/claude --permission-mode bypassPermissions \
+  --settings ~/.claude/channels/lark/settings.json \
+  --mcp-config ~/.claude/channels/lark/mcp.json \
+  --dangerously-load-development-channels server:lark-channel"
+```
+
+中间那个 `printf '\n'` 是过启动时的确认框；末尾 `sleep 100000` 用来保持 stdin 打开
+（管道一 EOF 会话就退）。配 `RunAtLoad` 即可，不需要 `KeepAlive`。
+
+**代价**：这样起的会话没有可见窗口，回到电脑上只能靠 `bin/claude-to-desktop` 把它搬进
+Claude 桌面版查看，或者用 `claude --resume` 在终端接手。两种模式按你的使用习惯二选一，
+也可以两个都装、按需切换。
+
+> 顺带一提：`screen` 走不通——macOS 自带的 4.00.03（2006 年）撑不住现代 TUI，
+> 进程起得来但窗口渲染为空。想要"常驻 + 随时 attach"得装真 `tmux`。
+
+## 上游限制
+
+这些不是本项目能解决的，取决于飞书和 Claude Code 官方：
+
+- **话题里必须 `@bot`**：应用拿到的事件权限是「获取群组中用户@机器人消息」，不 @ 的群消息
+  服务端根本不推送。私聊没这个限制。想免掉需向飞书申请更宽的群消息权限（通常要审核，
+  且等于让 bot 看到群里全部内容）。
+- **自建 channel 需要 `--dangerously-load-development-channels`**，每次启动过一次警告框。
+  Channels 处于研究预览期，未进官方 marketplace 的 channel 都要带这个 flag。
+- **只支持 Claude Code**：Codex CLI 目前没有等价的 channel 机制，无法把消息推进已运行的会话。
+- **`bin/claude-to-desktop` 靠模拟按键**执行 `/desktop`。直接往 Claude 桌面版的元数据目录
+  写文件无效——它只认自己写的索引（随机 UUID 和官方的 `local_<cliSessionId>` 两种命名都验过）。
+  所以只能模拟按键，Claude Code 改 TUI 布局即失效（失效只是不搬，不损坏数据）。
 
 ---
 
@@ -196,7 +226,14 @@ is already running**. Anthropic ships Telegram, Discord and iMessage channels; t
 - Registering a custom channel in the global `~/.claude.json` makes **every** Claude Code instance
   (including the desktop app) spawn its own server, all consuming the same event stream — use `--mcp-config`.
 
-See the Chinese sections above for installation, security boundaries and known limitations.
+**Autostart is opt-in, not missing.** By default the session runs in a visible Terminal window so
+you can switch back and keep typing. If you'd rather have it always available, a launchd example is
+in the Chinese section above — note Claude Code is a TUI and needs a real tty, so it must be wrapped
+in `script(1)`; a plain `nohup` won't start.
+
+Remaining constraints are upstream (Feishu requires `@bot` for group messages; custom channels need
+`--dangerously-load-development-channels` during the research preview; Codex CLI has no channel
+equivalent). See the Chinese sections for installation and security boundaries.
 
 ## License
 
