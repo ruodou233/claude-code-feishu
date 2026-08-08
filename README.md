@@ -1,4 +1,4 @@
-# claude-code-lark
+# 飞书遥控 Agent · claude-code-feishu
 
 出门前电脑上开的活，到手机上就接不上了？这个项目用飞书把**正在运行的那个 Claude Code 会话**接到你手机上——出门用飞书接着指挥，回来切回终端接着敲，始终是同一个会话。
 
@@ -94,8 +94,8 @@ macOS 自带的 `screen 4.00.03`（2006 年）撑不住现代 TUI——进程起
 [lark-cli](https://github.com/larksuite/lark-cli)（已完成 `auth login`）。
 
 ```bash
-git clone https://github.com/ruodou233/claude-code-lark
-cd claude-code-lark
+git clone https://github.com/ruodou233/claude-code-feishu
+cd claude-code-feishu
 mkdir -p ~/.claude/channels/lark
 cp src/*.mjs ~/.claude/channels/lark/
 cp config.example.json ~/.claude/channels/lark/config.json
@@ -147,7 +147,7 @@ claude-lark ~/your/project
 
 ---
 
-# claude-code-lark (English)
+# claude-code-feishu (English)
 
 Control a **running** Claude Code session from your phone via Feishu/Lark — start work at your desk,
 keep steering it from your phone, come back and continue in the same session.
