@@ -136,10 +136,15 @@ claude-lark ~/your/project
 "回到最近一条入站消息的来源"会在消息交错时把 A 的回复发给 B——你私聊里的内容可能落到群里。
 单来源从根上消除这种交错，代价是想换指挥入口要改配置。
 
-**`autoApprove` 是你要自己权衡的那个开关**：默认 `false`，工具调用会推到飞书等你回 `y`/`n`。
-设为 `true` 并配合 `--permission-mode bypassPermissions` 后，**一条 IM 消息可以在你机器上做任何事**，
-没有任何确认——方便和风险成正比，取决于你把 bot 放在什么环境里。两种模式的每次工具调用
-都记在 `debug.log`，事后可查。
+**权限门真值表**（`claude-lark` 不再无条件写 `bypassPermissions`）：
+
+| 启动方式 | permission-mode | 飞书审批 |
+|---|---|---|
+| `claude-lark`（默认）且 `autoApprove` 为 false | `default` | 推到飞书等 `y`/`n` |
+| `claude-lark` 且 `autoApprove` 为 true | `bypassPermissions` | 不打断 |
+| `claude-lark --auto` | `bypassPermissions` | 不打断；出门全自动，**一条 IM 可以在你机器上做任何事** |
+
+`--auto` 会保留，方便出门；风险与 `autoApprove: true` 相同，启动时会打印警告。两种模式的每次工具调用都记在 `debug.log`。
 
 ## 可选：开机自启
 

@@ -43,9 +43,13 @@ function myRoot() {
   return null
 }
 
-// 回复目标随消息来源走：话题里问的就回到那个话题，私聊问的就回私聊
+// 回复目标随消息来源走：话题里问的就回到那个话题，私聊问的就回私聊。
+// 出站必须带当时的目标，不要读调用瞬间的全局。
 let replyTarget = CHAT_ID
 let replyRoot = null
+let currentDest = { chatId: CHAT_ID, root: null }
+let pendingRequestId = null
+let eventChain = Promise.resolve()
 
 // 同时写文件：被 Claude Code spawn 时 stderr 不可见，没有日志就无法诊断
 const LOG_FILE = join(homedir(), '.claude/channels/lark/debug.log')
@@ -56,13 +60,15 @@ const log = (...a) => {
 }
 
 /** 发消息到飞书。失败只记日志，不能让出站问题拖垮 channel。 */
-function send(text) {
+function send(text, dest = currentDest) {
   return new Promise(resolve => {
-    if (!replyTarget) { log('send skipped: no reply target yet'); return resolve() }
-    const args = replyRoot
-      ? ['im', '+messages-reply', '--as', 'bot', '--message-id', replyRoot, '--reply-in-thread', '--text', text]
+    const chatId = dest?.chatId
+    const root = dest?.root
+    if (!chatId && !root) { log('send skipped: no reply target yet'); return resolve() }
+    const args = root
+      ? ['im', '+messages-reply', '--as', 'bot', '--message-id', root, '--reply-in-thread', '--text', text]
       // 用 bot 身份发，否则消息显示成用户自己发的；回环由 sender_type 检查挡住
-      : ['im', '+messages-send', '--as', 'bot', '--chat-id', replyTarget, '--text', text]
+      : ['im', '+messages-send', '--as', 'bot', '--chat-id', chatId, '--text', text]
     execFile(LARK_CLI, args,
       { timeout: 20000 },
       err => { if (err) log('send failed:', err.message); resolve() })
@@ -152,7 +158,6 @@ log('connected, chat:', CHAT_ID, 'allowed senders:', ALLOWED_SENDERS.size)
 const VERDICT_RE = /^\s*(y|yes|n|no)\s+([a-km-z]{5})\s*$/i
 // 裸 y/n：手机上敲五位随机 ID 太别扭，直接批最近一个待审请求
 const BARE_VERDICT_RE = /^\s*(y|yes|n|no|批准|同意|拒绝)\s*$/i
-let pendingRequestId = null
 
 // lark-cli 已把飞书事件扁平化：sender_id/chat_id 是裸字符串，content 是纯文本
 // （实测 im.message.receive_v1 载荷，非飞书原始 webhook 的嵌套结构）
@@ -164,10 +169,12 @@ async function handleEvent(ev) {
   if (ev.chat_id === CHAT_ID) {
     if (!IS_MAIN) return
     replyRoot = null
+    currentDest = { chatId: CHAT_ID, root: null }
   } else if (BOARD && ev.chat_id === BOARD) {
     const mine = myRoot()
     if (!mine || ev.root_id !== mine) return
     replyRoot = mine
+    currentDest = { chatId: BOARD, root: mine }
   } else return
   const sender = ev.sender_id
   if (!sender || !ALLOWED_SENDERS.has(sender)) return   // 门禁：人 + 会话双重
@@ -216,7 +223,12 @@ function startConsumer() {
       const line = buf.slice(0, i).trim()
       buf = buf.slice(i + 1)
       if (!line) continue
-      try { handleEvent(JSON.parse(line)) } catch { /* 非 JSON 行忽略 */ }
+      try {
+        const ev = JSON.parse(line)
+        eventChain = eventChain
+          .then(() => handleEvent(ev))
+          .catch(err => log('handleEvent', err?.message || err))
+      } catch { /* 非 JSON 行忽略 */ }
     }
   })
   child.stderr.on('data', d => log('consumer:', d.toString().trim().slice(0, 200)))
