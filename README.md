@@ -1,4 +1,6 @@
-# 飞书遥控 Agent · claude-code-feishu
+# 飞书遥控 Claude Code｜Claude Code Remote Control via Feishu/Lark
+
+Continue the same desktop Claude Code session from your phone through Feishu / Lark.
 
 出门前电脑上开的活，到手机上就接不上了？这个项目用飞书把**正在运行的那个 Claude Code 会话**接到手机上：你可以补要求、看每轮回复、处理工具审批，回来切回终端继续敲。写代码、查资料、改文档，只要是在这个会话里做的事，都能在电脑和手机之间往返，不用再讲一遍前情。
 
