@@ -2,243 +2,142 @@
 
 Continue the same desktop Claude Code session from your phone through Feishu / Lark.
 
-出门前电脑上开的活，到手机上就接不上了？这个项目用飞书把**正在运行的那个 Claude Code 会话**接到手机上：你可以补要求、看每轮回复、处理工具审批，回来切回终端继续敲。写代码、查资料、改文档，只要是在这个会话里做的事，都能在电脑和手机之间往返，不用再讲一遍前情。
+出门前电脑上开的活，到手机上就接不上了？这个项目用飞书把**正在运行的那个 Claude Code 会话**接到手机上：桌面版和终端里每个会话自动在飞书话题群里开一个话题，每轮回复贴进来；你在话题里回一句，就注入那个会话接着干。回到电脑前，对话就在原处，不用再讲一遍前情。
 
 ## 离开电脑以后怎么用
 
-- **出门前没干完**：“接着刚才的方案做，先把第一部分完成。”在飞书里继续指挥原会话，回来还能在终端接着干。
-- **路上想到新要求**：“刚才那个页面再加一个筛选项。”把补充发进对应话题，Agent 接着已有上下文处理。
-- **等长任务出结果**：“你继续跑，我去忙别的。”每轮回复自动同步到飞书，电脑上输入的轮次也会回传，不用一直盯着终端。
-- **有几个会话同时在跑**：一个会话对应一个飞书话题，在要指挥的话题里 `@bot`，消息和结果各回各处。
-- **工具调用等你批准**：开启审批转发后，在手机上回 `y` / `n`，人不在电脑旁也能处理。
+- **出门前没干完**：“接着刚才的方案做，先把第一部分完成。”在那个会话的话题里回一句，桌面上的原会话接着干。
+- **路上想到新要求**：“刚才那个页面再加一个筛选项。”发进对应话题，Claude 带着已有上下文处理。
+- **等长任务出结果**：每轮回复自动贴到飞书，你在电脑上敲的轮次也会回传，不用一直盯着屏幕。
+- **几个会话同时在跑**：一个会话一个话题，在哪个话题里说话就指挥哪个会话，结果各回各处。
+- **手机上临时开个新活**：在群里发一个新话题，后台起一个命令行会话去做，在同一话题里接着聊。
 
-项目为中国大陆环境而写，用飞书来连接手机和电脑上的 Claude Code。派活、回信、连续性里，最想补上的就是最后一件：你手里的这份工作，换个设备还能继续。
+项目为中国大陆环境而写：官方的 Remote Control、Channels 都要求 claude.ai 账号或 Console API key，用中转或第三方模型服务时用不了；飞书在国内稳定，长连接也不需要公网 IP。
 
-## 与现有方案的区别：channel 型 vs bridge 型
+## 三步装好
 
-社区里绝大多数飞书/Telegram 遥控方案是 **bridge 型**：收到消息 → 起一个新的 CLI 进程 → 干完回消息。
-
-```
-bridge 型：飞书消息 ──► 新起进程 ──► 回消息 ──► 结束
-                       每次都是新会话，接不上你手上的活
-
-channel 型：飞书消息 ──► 推进「已经在跑的那个会话」──► 回消息
-                       同一个会话，终端和手机都能喂它
-```
-
-bridge 型每次都是**新会话**：你在电脑上干到一半的上下文它接不上，手机上派的活回电脑也是一条孤立记录。
-本项目基于 Claude Code 官方的 [Channels](https://code.claude.com/docs/en/channels) 机制——
-一个声明了 `claude/channel` capability 的 MCP server 可以把外部事件**推进正在运行的会话**。
-官方只提供了 Telegram / Discord / iMessage，这是飞书版的实现。
-
-## 核心功能/亮点
-
-- **同一会话反复往返**：电脑 → 手机 → 电脑 → 手机，上下文不断。这是与 bridge 型方案的根本区别。
-- **双向自动同步**：手机发的消息推进会话；会话每轮的回复由 `Stop` hook 自动同步回飞书——
-  包括你**在电脑上敲的那些轮次**，不依赖模型"记得"调用回复工具。
-- **一个会话 = 一个飞书话题**：多个会话的输出各自独立成话题，不挤在一个消息流里。
-  在哪个话题里 `@bot` 说话就指挥哪个会话，回复也回到该话题。
-- **按 root_id 路由**：多个会话并存时天然去重，不会一条指令被执行多次。
-- **会话跑在真实终端窗口里**：随时切回去直接敲，"回来能继续"才成立。
-- **零额外基础设施**：收发消息复用飞书官方 [lark-cli](https://github.com/larksuite/lark-cli)，
-  不自建应用凭据管理、不处理 token 刷新、不开公网端口、不需要内网穿透。
-- **权限审批可转发到手机**：工具调用需要批准时推到飞书，回 `y` / `n` 即可（也可配置为全自动放行）。
-
-## 三个设计决策（以及为什么）
-
-**1. 会话跑在 Terminal.app 窗口里，不做后台常驻**
-
-连续性要求"回来能接着干"，所以会话必须看得见、能直接敲。后台伪终端能跑但没有窗口；
-macOS 自带的 `screen 4.00.03`（2006 年）撑不住现代 TUI——进程起得来，窗口渲染是空的，channel 加载不了
-（管道喂 stdin 和 `-X stuff` 两种注入都试过）；`tmux` 可行但要先装包管理器。
-最后用 `osascript` 开 Terminal 窗口：零依赖、真 TTY。默认因此不自启——自启的会话看不见，
-与"回来能继续"冲突。需要自启的话见下方「可选：开机自启」，两种模式可以按习惯切换。
-
-**2. 回信靠 Stop hook，不靠模型自觉**
-
-给模型一个 `reply` 工具让它"需要时回复"不可靠：它只在**觉得该回话**时才调，
-你在电脑上敲的轮次它根本不会想着往手机发。改用每轮必触发的 `Stop` hook，读 transcript 取回复发出去，
-确定性的，与模型行为无关。hook 通过 `--settings` 只挂在这个会话上，不污染其它会话。
-
-**3. 一个会话一个话题，按 root_id 认领**
-
-加标题前缀治标不治本——消息仍挤在一个流里。飞书**话题群**才是对应物。
-会话首轮结束时发一条消息开话题、记下 `message_id` 作为 root，之后每轮 `reply-in-thread` 挂上去。
-你在话题里 `@bot` 时事件带 `root_id`，正好等于那条 root——于是每个 server 只处理自己那份，
-顺带解决了多会话并存时的重复消费。
-
-## 实测踩到的坑
-
-调试很久才定位的，写下来省得别人再踩：
-
-**lark-cli**
-1. `event consume` 只支持 `--as bot`，默认走 user 身份直接报错。
-2. **`consume` 把 stdin EOF 当退出信号**（为 AI 子进程调用设计的防孤儿机制）。
-   spawn 时 stdin 用 `'ignore'` 会让它一起来就退出，配合重连逻辑变成死循环。必须 `'pipe'` 并保持打开。
-3. 事件载荷**已被扁平化**：`sender_id` 是裸字符串、`content` 是纯文本，
-   不是飞书原始 webhook 的嵌套结构。照官方 webhook 文档写解析器会全部落空。
-
-**飞书平台**
-4. **用户身份不能给 bot 发私聊**（`code 230001`）——自动化测试只能走群 `@`，但你本人在客户端私聊正常。
-5. **群消息必须 `@bot` 才推送事件**（权限是「获取群组中用户@机器人消息」）。私聊没这个限制。
-
-**Claude Code**
-6. 自建 channel 注册进全局 `~/.claude.json` 会让**每个** Claude Code 实例（含桌面版）
-   都 spawn 一个 server，多份同时消费事件流。要用 `--mcp-config` 指定独立配置。
-7. MCP server 被 Claude Code spawn 时 stderr 不可见，没有文件日志无法排障。
-
-## 安装
-
-需要 macOS、Node ≥ 20、[Claude Code](https://claude.com/claude-code)、
-[lark-cli](https://github.com/larksuite/lark-cli)（已完成 `auth login`）。
+需要 macOS、Node ≥ 20、[Claude Code](https://claude.com/claude-code)（桌面版或终端版都行），以及一个飞书账号（个人版即可）。
 
 ```bash
-git clone https://github.com/ruodou233/claude-code-feishu
-cd claude-code-feishu
-mkdir -p ~/.claude/channels/lark
-cp src/*.mjs ~/.claude/channels/lark/
-cp config.example.json ~/.claude/channels/lark/config.json
-cp mcp.example.json  ~/.claude/channels/lark/mcp.json
-cd ~/.claude/channels/lark && npm install @modelcontextprotocol/sdk zod
+git clone https://github.com/ruodou233/claude-code-feishu ~/claude-code-feishu
+cd ~/claude-code-feishu && npm install
+node bridge.mjs setup
 ```
 
-飞书侧：应用需开启机器人能力、以长连接模式订阅 `im.message.receive_v1`、
-具备 `im:message` 与 `im:message:send_as_bot` 权限。
+`setup` 会打印一个链接。在浏览器或飞书手机端打开，点「立即创建」——这用的是飞书官方 CLI 同款的应用注册流程，机器人、消息权限、事件订阅、长连接一次配好，不用进开放平台后台。之后脚本自动建一个话题群「Claude」，你是群主。
 
-填 `config.json`：
-
-| 字段 | 含义 | 怎么拿 |
-|---|---|---|
-| `chatId` | 与 bot 的私聊 | `lark-cli im +chat-messages-list --as user --user-id <bot_open_id>`，取 `chat_id` |
-| `boardChatId` | 话题群（`--chat-mode topic` 创建） | `lark-cli im +chat-create` 的返回 |
-| `allowedSenders` | 允许指挥的人 | `lark-cli auth status` 里的 `openId` |
-| `autoApprove` | 是否免审批（默认 false） | 见「安全边界」 |
-
-Stop hook 需挂到会话：基于你现有的 `~/.claude/settings.json` 复制一份，
-在 `hooks.Stop` 里加 `node ~/.claude/channels/lark/sync-hook.mjs`，启动时用 `--settings` 指向它。
-`bin/claude-lark` 已把这套参数串好：
+**再开一项权限**：一键建的应用只能收到群里 @ 它的消息。想在话题里直接说话、不用每句 @，到 [开放平台](https://open.feishu.cn/app) → 你的应用 → 权限管理，开通「获取群组中所有消息」（`im:message.group_msg`）。个人版免审，开通即生效。不开也能用，每句 @ 一下机器人就行。
 
 ```bash
-cp bin/claude-lark ~/.local/bin/ && chmod +x ~/.local/bin/claude-lark
-claude-lark ~/your/project
+node bridge.mjs install
 ```
+
+`install` 往 `~/.claude/settings.json` 挂四个钩子（SessionStart / UserPromptSubmit / Stop / SessionEnd），并注册 launchd 开机自启。之后新开的会话会自动进群；已经开着的会话，下一轮也会自己登记上。
+
+卸载：`node bridge.mjs uninstall`，摘掉钩子和自启，配置留在 `~/.claude/feishu-bridge/`。
+
+## 原理
+
+```
+ 桌面版 / 终端的 Claude Code 会话
+   │ 钩子：每个事件写一个小文件（会话 id、对话文件路径、收件地址）
+   ▼
+ bridge.mjs（launchd 常驻，不调用模型）
+   ├─ Stop 事件 → 读对话文件，取本轮回复 → 贴进该会话的话题
+   └─ 话题里有人回复 → 经会话的收件 socket 注入正在运行的那个会话
+   ▲
+   │ 飞书长连接（WebSocket，不需要公网 IP）
+ 手机飞书：话题群「Claude」，一个会话一个话题
+```
+
+### 为什么不用 Channels
+
+上一版（v1）基于官方 [Channels](https://code.claude.com/docs/en/channels)：声明 `claude/channel` 的 MCP server 可以把消息推进运行中的会话。实际用下来有三个硬伤：
+
+1. **要官方账号**。Channels 要求 claude.ai 登录或 Console API key，走中转、用第三方模型服务的人用不了。
+2. **会话得专门起**。只有带 `--dangerously-load-development-channels` 启动的终端会话才能接，桌面版的会话一个都接不上，每次启动还要过一次警告框。
+3. **回信要额外造轮子**。模型只在觉得该回话时才调回复工具，最后还是得靠 Stop 钩子兜底。
+
+这一版换了思路：**Claude Code 每个会话本来就开着一个本地收件 socket**，跨会话消息就是从这里进来的。钩子是会话的子进程，环境里有这个 socket 的地址和令牌，顺手交给转发程序，手机上的消息就能送进任何一个正在运行的会话——桌面版、终端都行，不用改启动方式，也不挑登录方式。
+
+### 实测踩到的坑
+
+- **常驻进程发的消息会被静默丢掉**。收件端会核对发送进程，比会话启动得早的进程发过去，连错误都没有，消息就没了。所以每次注入都现起一个新进程去发（`bridge.mjs inject`），发完再看对话文件里有没有这条，没有就重试一次。
+- **注入的消息在 Claude 看来是「另一个会话发来的」**，没法伪装成用户输入。转发程序在消息前加一句说明，请 Claude 当作用户本人的输入正常回复。它不会把这类消息当成批准待确认操作的同意——这是 Claude Code 自己的安全设计，也是对的。
+- **`~/.claude/sessions/*.key` 里的令牌发的消息会被丢掉**，只有会话子进程环境里的 `CLAUDE_CODE_MESSAGING_TOKEN` 有效。这也是为什么必须靠钩子来登记。
+- **一键建的应用收不到群里的普通消息**，只收 @ 机器人的。要么开 `im:message.group_msg`，要么每句 @。
+- **只镜像交互会话**。钩子按 `CLAUDE_CODE_ENTRYPOINT` 只认桌面版（`claude-desktop`、`claude-desktop-3p`）和终端交互（`cli`），外加本程序自己拉起的会话；脚本里的 `claude -p`、Agent SDK 调用不会刷进群。
+
+## 用起来要知道的
+
+- **桌面会话没在运行时**（进程退出了），收件 socket 就没了。这时机器人会回「请在桌面打开它」，不会另起进程续写，免得一份对话分叉成两份。终端会话和手机开的命令行会话则用 `claude -p --resume` 在原对话文件上接着跑。
+- **手机开的会话想回桌面版继续**：桌面版菜单 File → Import Claude Code CLI Sessions… 导入，导入后就是普通的桌面会话，话题不变。
+- **手机上看到的是每轮的最终文字**，工具调用和中间过程不转发；超过 12000 字分几条发。暂时只收文字消息。
+- **Mac 睡眠时离线**。转发程序没在跑或断网时，钩子事件攒在 `events/` 里，恢复后按顺序补发（超过一小时的丢弃）。想一直在线，可以 `sudo pmset -c sleep 0`（接电源时不睡）。
+- **Claude Code 升级后收件协议如果变了**（现在是 `type:auth` 和 `type:user` 两行 JSON），注入会失败，机器人会回「没在运行」，所以失效时看得出来。这是未公开的内部机制，2.1.3xx 实测可用。
 
 ## 安全边界
 
-这套东西让 IM 消息能在你机器上执行命令，务必理解清楚：
+这东西让一条飞书消息能在你电脑上执行命令，务必想清楚：
 
-**门禁按人，不按会话**：`allowedSenders` 是 open_id 白名单，再叠加会话/话题匹配。
-之所以不能只按会话——群里任何人都能发消息，而**能回复的人就能批准工具调用**，
-等于把执行权交给了整个群。
+- **只认群主本人**。转发程序只处理配置里那个话题群、只认 `owner_open_id`（setup 时由飞书返回，就是扫码的人）。群里拉了别人，他们的消息会被忽略。
+- **手机开的新会话默认 `bypassPermissions`**：命令行会话没有人在旁边点确认，不放行就会卡住。想收紧就改 `config.json` 的 `permission_mode`（比如 `acceptEdits`，或配好 `permissions.allow` 后用 `default`）。注入到已有会话的消息，沿用那个会话自己的权限模式。
+- **配置里有 App Secret**，`~/.claude/feishu-bridge/` 下的文件都是 600 权限。
 
-**单一入站来源是有意的**：server 只服务 `config.chatId` 一个私聊。放开多来源后，
-"回到最近一条入站消息的来源"会在消息交错时把 A 的回复发给 B——你私聊里的内容可能落到群里。
-单来源从根上消除这种交错，代价是想换指挥入口要改配置。
+## 配置
 
-**`autoApprove` 是你要自己权衡的那个开关**：默认 `false`，工具调用会推到飞书等你回 `y`/`n`。
-设为 `true` 并配合 `--permission-mode bypassPermissions` 后，**一条 IM 消息可以在你机器上做任何事**，
-没有任何确认——方便和风险成正比，取决于你把 bot 放在什么环境里。两种模式的每次工具调用
-都记在 `debug.log`，事后可查。
+`~/.claude/feishu-bridge/config.json`，setup 自动生成：
 
-## 可选：开机自启
+| 字段 | 含义 |
+|---|---|
+| `app_id` / `app_secret` | 飞书应用凭证 |
+| `owner_open_id` | 唯一允许指挥的人 |
+| `chat_id` | 话题群 |
+| `domain` | `feishu` 或 `lark`（国际版） |
+| `claude` | `claude` 命令的路径，手机开新会话时用 |
+| `workdir` | 手机开新会话的工作目录，默认家目录 |
+| `permission_mode` | 手机开新会话的权限模式，默认 `bypassPermissions` |
 
-默认不自启——`claude-lark` 把会话开在 Terminal 窗口里，是为了"回来能直接接着敲"。
-如果你更需要"随时能用"而不在乎看不看得见，可以让它开机自动跑。
-
-关键点：Claude Code 是 TUI，需要真 TTY，直接 `nohup` 起不来，得用 `script(1)` 造伪终端：
+同目录下还有 `state.json`（会话 ↔ 话题映射）、`events/`（钩子投递的事件）、`bridge.log`。
 
 ```bash
-# ~/Library/LaunchAgents/com.you.claude-code-feishu.plist 的 ProgramArguments
-/bin/bash -c "cd ~/your/project && (sleep 15; printf '\n'; sleep 100000) | \
-  script -q /dev/null ~/.local/bin/claude --permission-mode bypassPermissions \
-  --settings ~/.claude/channels/lark/settings.json \
-  --mcp-config ~/.claude/channels/lark/mcp.json \
-  --dangerously-load-development-channels server:lark-channel"
+launchctl kickstart -k gui/$(id -u)/com.github.claude-code-feishu   # 重启
+tail -f ~/.claude/feishu-bridge/bridge.log                           # 看日志
 ```
 
-中间那个 `printf '\n'` 是过启动时的确认框；末尾 `sleep 100000` 用来保持 stdin 打开
-（管道一 EOF 会话就退）。配 `RunAtLoad` 即可，不需要 `KeepAlive`。
-
-**代价**：这样起的会话没有可见窗口，回到电脑上只能靠 `bin/claude-to-desktop` 把它搬进
-Claude 桌面版查看，或者用 `claude --resume` 在终端接手。两种模式按你的使用习惯二选一，
-也可以两个都装、按需切换。
-
-> 顺带一提：`screen` 走不通——macOS 自带的 4.00.03（2006 年）撑不住现代 TUI，
-> 进程起得来但窗口渲染为空。想要"常驻 + 随时 attach"得装真 `tmux`。
-
-## 上游限制
-
-这些不是本项目能解决的，取决于飞书和 Claude Code 官方：
-
-- **话题里必须 `@bot`**：应用拿到的事件权限是「获取群组中用户@机器人消息」，不 @ 的群消息
-  服务端根本不推送。私聊没这个限制。想免掉需向飞书申请更宽的群消息权限（通常要审核，
-  且等于让 bot 看到群里全部内容）。
-- **自建 channel 需要 `--dangerously-load-development-channels`**，每次启动过一次警告框。
-  Channels 处于研究预览期，未进官方 marketplace 的 channel 都要带这个 flag。
-- **只支持 Claude Code**：Codex CLI 目前没有等价的 channel 机制，无法把消息推进已运行的会话。
-- **`bin/claude-to-desktop` 靠模拟按键**执行 `/desktop`。直接往 Claude 桌面版的元数据目录
-  写文件无效——它只认自己写的索引（随机 UUID 和官方的 `local_<cliSessionId>` 两种命名都验过）。
-  所以只能模拟按键，Claude Code 改 TUI 布局即失效（失效只是不搬，不损坏数据）。
+非 macOS：`install` 只挂钩子，转发程序用 systemd、pm2 之类常驻运行 `node bridge.mjs` 即可。
 
 ---
 
 # claude-code-feishu (English)
 
-Control a **running** Claude Code session from your phone via Feishu/Lark — start work at your desk,
-keep steering it from your phone, come back and continue in the same session.
+Steer the **same** Claude Code session from your phone through Feishu / Lark: every desktop or terminal session gets its own topic in a Feishu topic group, each turn's reply is posted there, and anything you reply in the topic is injected into that running session.
 
-> Written for users in mainland China, where Anthropic Dispatch, Claude Code Remote Control,
-> and the official Telegram / Discord / iMessage channels are unreliable, but Feishu/Lark works.
+> Written for users in mainland China. Anthropic's Remote Control and Channels require claude.ai or Console API-key auth and don't work behind third-party gateways; Feishu works reliably there and its long connection needs no public IP.
 
-## What problem this solves
+## Install
 
-"Control your AI from your phone" is really three separate capabilities: **dispatch** (start a task
-while away), **replies** (get progress back), and **continuity** (move one piece of work back and
-forth between desktop and phone). The first two are well covered by existing projects. The third
-is the hard one — and the one you actually need day to day.
+```bash
+git clone https://github.com/ruodou233/claude-code-feishu ~/claude-code-feishu
+cd ~/claude-code-feishu && npm install
+node bridge.mjs setup     # open the printed link, click Create — app, bot, scopes, events all preconfigured; a topic group is created
+node bridge.mjs install   # adds 4 hooks to ~/.claude/settings.json and a launchd agent
+```
 
-## channel-based, not bridge-based
+Optional: enable `im:message.group_msg` in the developer console so you can talk in topics without @-mentioning the bot.
 
-Most Feishu/Telegram remote-control projects are **bridges**: message in → spawn a new CLI process →
-reply → exit. Every message starts a *new* session, so it can't pick up the context you already have
-open, and work you dispatch from your phone lands as an isolated record on your machine.
+## How it works
 
-This project builds on Claude Code's official [Channels](https://code.claude.com/docs/en/channels):
-an MCP server declaring the `claude/channel` capability pushes external events **into a session that
-is already running**. Anthropic ships Telegram, Discord and iMessage channels; this is the Feishu/Lark one.
+Every Claude Code session already listens on a local inbox socket (that's how cross-session messages arrive). Hooks run as children of the session, so they can see the socket path and the per-session `CLAUDE_CODE_MESSAGING_TOKEN`; they hand both to `bridge.mjs`, a small launchd daemon that holds the Feishu WebSocket. Replies are read from the transcript on `Stop`; phone messages are injected through the socket. No model calls, no Channels, works with the desktop app and with any auth method.
 
-## Highlights
+Field notes:
 
-- **Round-trip continuity** — desktop → phone → desktop → phone, context preserved throughout.
-- **Two-way sync** — inbound messages steer the session; a `Stop` hook syncs every turn's reply back
-  to Feishu, **including turns you type on the desktop**. No reliance on the model remembering to call a tool.
-- **One session = one Feishu topic** — outputs stay in separate threads. `@bot` inside a topic steers
-  that session; replies return to the same topic.
-- **Routing by `root_id`** — natural de-duplication when several sessions run at once.
-- **Session lives in a real Terminal window** — you can switch back and type directly.
-- **No extra infrastructure** — messaging goes through the official
-  [lark-cli](https://github.com/larksuite/lark-cli); no credential management, no token refresh,
-  no inbound ports, no tunneling.
-- **Permission prompts forwarded to your phone** — reply `y` / `n`, or configure auto-approve.
+- The inbox silently drops messages from a sender process older than the session, so each injection spawns a fresh `bridge.mjs inject` process and then confirms delivery by checking the transcript.
+- Injected messages are presented to Claude as coming from another session, so the bridge prefixes a note asking Claude to treat it as the user's own input. Claude still won't treat it as approval for a pending permission prompt — by design.
+- If a desktop session's process has exited there is no socket; the bot asks you to reopen it rather than forking the conversation. Terminal and phone-started sessions resume with `claude -p --resume`.
+- This relies on an undocumented internal protocol (tested on Claude Code 2.1.3xx). If it changes, the bot reports the session as not running.
 
-## Field notes (hard-won)
-
-- `lark-cli event consume` only supports `--as bot`; it treats **stdin EOF as a shutdown signal**,
-  so spawning it with `stdio: 'ignore'` makes it exit immediately and loop forever against your restart logic.
-- Its event payload is **flattened** (`sender_id` a bare string, `content` plain text) — parsers written
-  against Feishu's raw webhook schema silently match nothing.
-- A user identity **cannot DM a bot** (`code 230001`); group messages only reach you when the bot is `@`-mentioned.
-- Registering a custom channel in the global `~/.claude.json` makes **every** Claude Code instance
-  (including the desktop app) spawn its own server, all consuming the same event stream — use `--mcp-config`.
-
-**Autostart is opt-in, not missing.** By default the session runs in a visible Terminal window so
-you can switch back and keep typing. If you'd rather have it always available, a launchd example is
-in the Chinese section above — note Claude Code is a TUI and needs a real tty, so it must be wrapped
-in `script(1)`; a plain `nohup` won't start.
-
-Remaining constraints are upstream (Feishu requires `@bot` for group messages; custom channels need
-`--dangerously-load-development-channels` during the research preview; Codex CLI has no channel
-equivalent). See the Chinese sections for installation and security boundaries.
+Only the group owner's messages are accepted. Phone-started sessions default to `bypassPermissions`; change `permission_mode` in `~/.claude/feishu-bridge/config.json` to tighten it.
 
 ## License
 

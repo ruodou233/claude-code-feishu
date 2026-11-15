@@ -1,5 +1,2 @@
 node_modules/
-config.json
-threads.json
-debug.log
-*.log
+package-lock.json

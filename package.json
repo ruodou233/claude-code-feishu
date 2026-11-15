@@ -1,0 +1,11 @@
+{
+  "name": "claude-code-feishu",
+  "version": "2.0.0",
+  "description": "飞书话题群 ⇄ 本机 Claude Code 会话：手机上接着指挥桌面版正在跑的那个会话",
+  "type": "module",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "dependencies": {
+    "@larksuiteoapi/node-sdk": "^1.76.0"
+  }
+}
