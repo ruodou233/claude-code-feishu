@@ -36,6 +36,10 @@ node bridge.mjs install
 
 卸载：`node bridge.mjs uninstall`，摘掉钩子和自启，配置留在 `~/.claude/feishu-bridge/`。
 
+整个项目就一个文件 [`bridge.mjs`](bridge.mjs)（约 370 行），唯一依赖是飞书官方 Node SDK。
+
+> 用 CC Switch 之类会改写 `settings.json` 的工具切换供应商时，记得把这四个钩子也加进它的通用配置，否则切换后钩子会丢。
+
 ## 原理
 
 ```
