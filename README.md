@@ -32,13 +32,13 @@ node bridge.mjs setup
 node bridge.mjs install
 ```
 
-`install` 往 `~/.claude/settings.json` 挂四个钩子（SessionStart / UserPromptSubmit / Stop / SessionEnd），并注册 launchd 开机自启。之后新开的会话会自动进群；已经开着的会话，下一轮也会自己登记上。
+`install` 往 `~/.claude/settings.json` 挂五个钩子（SessionStart / UserPromptSubmit / Stop / StopFailure / SessionEnd），并注册 launchd 开机自启。之后新开的会话会自动进群；已经开着的会话，下一轮也会自己登记上。
 
 卸载：`node bridge.mjs uninstall`，摘掉钩子和自启，配置留在 `~/.claude/feishu-bridge/`。
 
 整个项目就一个文件 [`bridge.mjs`](bridge.mjs)（约 370 行），唯一依赖是飞书官方 Node SDK。
 
-> 用 CC Switch 之类会改写 `settings.json` 的工具切换供应商时，记得把这四个钩子也加进它的通用配置，否则切换后钩子会丢。
+> 用 CC Switch 之类会改写 `settings.json` 的工具切换供应商时，记得把这五个钩子也加进它的通用配置，否则切换后钩子会丢。
 
 ## 原理
 
@@ -76,7 +76,7 @@ node bridge.mjs install
 
 - **桌面会话没在运行时**（进程退出了），收件 socket 就没了。这时机器人会回「请在桌面打开它」，不会另起进程续写，免得一份对话分叉成两份。终端会话和手机开的命令行会话则用 `claude -p --resume` 在原对话文件上接着跑。
 - **手机开的会话想回桌面版继续**：桌面版菜单 File → Import Claude Code CLI Sessions… 导入，导入后就是普通的桌面会话，话题不变。
-- **手机上看到的是每轮的最终文字**，工具调用和中间过程不转发；超过 12000 字分几条发。暂时只收文字消息。
+- **手机上看到的是每轮里 Claude 写的文字**，工具调用和中间过程不转发；超过 12000 字分几条发。暂时只收文字消息。
 - **Mac 睡眠时离线**。转发程序没在跑或断网时，钩子事件攒在 `events/` 里，恢复后按顺序补发（超过一小时的丢弃）。想一直在线，可以 `sudo pmset -c sleep 0`（接电源时不睡）。
 - **Claude Code 升级后收件协议如果变了**（现在是 `type:auth` 和 `type:user` 两行 JSON），注入会失败，机器人会回「没在运行」，所以失效时看得出来。这是未公开的内部机制，2.1.3xx 实测可用。
 
@@ -125,7 +125,7 @@ Steer the **same** Claude Code session from your phone through Feishu / Lark: ev
 git clone https://github.com/ruodou233/claude-code-feishu ~/claude-code-feishu
 cd ~/claude-code-feishu && npm install
 node bridge.mjs setup     # open the printed link, click Create — app, bot, scopes, events all preconfigured; a topic group is created
-node bridge.mjs install   # adds 4 hooks to ~/.claude/settings.json and a launchd agent
+node bridge.mjs install   # adds 5 hooks to ~/.claude/settings.json and a launchd agent
 ```
 
 Optional: enable `im:message.group_msg` in the developer console so you can talk in topics without @-mentioning the bot.

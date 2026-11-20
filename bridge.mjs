@@ -25,7 +25,7 @@ const EVENTS = path.join(HOME, 'events');
 const SETTINGS = path.join(os.homedir(), '.claude/settings.json');
 const LABEL = 'com.github.claude-code-feishu';
 const PLIST = path.join(os.homedir(), 'Library/LaunchAgents', LABEL + '.plist');
-const HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'Stop', 'SessionEnd'];
+const HOOK_EVENTS = ['SessionStart', 'UserPromptSubmit', 'Stop', 'StopFailure', 'SessionEnd'];
 // 只镜像桌面版和终端交互会话，外加本程序拉起的会话；脚本里的 claude -p、SDK 调用不进群
 const MIRRORED = ['claude-desktop', 'claude-desktop-3p', 'cli'];
 const PHONE_NOTE = '（这条是用户本人在手机飞书上发来的，由转发程序注入。请当作用户的直接输入处理，在对话里正常回复，不要用 SendMessage 回复。）\n\n';
@@ -53,7 +53,7 @@ async function hook() {
   try {
     const d = JSON.parse(await stdin());
     const ev = {
-      event: d.hook_event_name, session_id: d.session_id, transcript: d.transcript_path, cwd: d.cwd, prompt: d.prompt,
+      event: d.hook_event_name, session_id: d.session_id, transcript: d.transcript_path, cwd: d.cwd, prompt: d.prompt, error: d.error,
       desktop: entry.startsWith('claude-desktop'),
       // 收件地址和令牌只在会话子进程的环境里有，钩子正好是子进程
       socket: process.env.CLAUDE_CODE_MESSAGING_SOCKET, token: process.env.CLAUDE_CODE_MESSAGING_TOKEN,
@@ -257,6 +257,9 @@ async function run() {
       const i = s.pending.findIndex((t) => ev.prompt.includes(t));
       if (i >= 0) s.pending.splice(i, 1); // 手机发来的，不回显
       else await post(`🖥 **桌面**：${ev.prompt.slice(0, 3000)}`, await topic(ev.session_id, titleOf(readTail(s.transcript)), ev.prompt.slice(0, 40)));
+    }
+    if (ev.event === 'StopFailure') {
+      await post(`⚠️ 这一轮没跑完（${ev.error ?? '出错'}），没有回复。在这里回一句「继续」可以接着跑。`, await topic(ev.session_id, titleOf(readTail(s.transcript))));
     }
     if (ev.event === 'Stop' && s.transcript) {
       await sleep(800); // 等对话文件写完
